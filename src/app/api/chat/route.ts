@@ -38,6 +38,7 @@ export async function POST(req: Request) {
   try {
     const result = streamText({
       model,
+      abortSignal: req.signal,
       messages,
       maxTokens: 10_000,
       maxSteps: isMockProvider ? 4 : 40,
@@ -120,13 +121,16 @@ export async function POST(req: Request) {
     const encoder = new TextEncoder();
     const originalStream = result.toDataStream();
     let hasReceivedData = false;
+    let cancelled = false;
+    let upstreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
     const transformedStream = new ReadableStream({
       async start(controller) {
-        const reader = originalStream.getReader();
+        upstreamReader = originalStream.getReader();
         try {
           while (true) {
-            const { done, value } = await reader.read();
+            const { done, value } = await upstreamReader.read();
+            if (cancelled) break;
             if (done) {
               // If no data was received and there's a streamError, or stream ended immediately
               if (!hasReceivedData || streamError) {
@@ -147,6 +151,7 @@ export async function POST(req: Request) {
             controller.enqueue(value);
           }
         } catch (readError: any) {
+          if (cancelled) return;
           // Catch HTTP client errors during stream read
           console.debug("[DEBUG] Stream read error caught");
           console.debug("[DEBUG] Error type:", typeof readError);
@@ -164,9 +169,17 @@ export async function POST(req: Request) {
               type: "http_error"
             }
           });
-          controller.enqueue(encoder.encode(`3:${errorData}\n`));
-          controller.close();
+          try {
+            controller.enqueue(encoder.encode(`3:${errorData}\n`));
+            controller.close();
+          } catch {
+            // Controller already closed by runtime during client disconnect
+          }
         }
+      },
+      cancel() {
+        cancelled = true;
+        if (upstreamReader) upstreamReader.cancel().catch(() => {});
       },
     });
 
