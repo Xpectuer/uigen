@@ -36,8 +36,8 @@ export function SignInForm({ onSuccess }: SignInFormProps) {
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"
-          type="email"
-          placeholder="you@example.com"
+          type="text"
+          placeholder="Email or username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
