@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import fs from "fs";
 import { VirtualFileSystem } from "../file-system";
 
 export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
@@ -26,16 +27,17 @@ export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
             error: "new_path is required for rename command",
           };
         }
-        const success = fileSystem.rename(path, new_path);
-        if (success) {
+        // Use the real filesystem to rename — this is a file manager after all
+        try {
+          fs.renameSync(path, new_path);
           return {
             success: true,
             message: `Successfully renamed ${path} to ${new_path}`,
           };
-        } else {
+        } catch (err: any) {
           return {
             success: false,
-            error: `Failed to rename ${path} to ${new_path}`,
+            error: `Failed to rename ${path} to ${new_path}: ${err.message}`,
           };
         }
       } else if (command === "delete") {
