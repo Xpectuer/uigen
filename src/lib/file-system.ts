@@ -288,24 +288,24 @@ export class VirtualFileSystem {
     return fileMap;
   }
 
-  serialize(): Record<string, FileNode> {
-    const result: Record<string, FileNode> = {};
+  serialize(): FileNode[] {
+    const result: FileNode[] = [];
 
-    for (const [path, node] of this.files) {
+    for (const [_, node] of this.files) {
       // Create a shallow copy without the Map children to avoid serialization issues
       if (node.type === "directory") {
-        result[path] = {
+        result.push({
           type: node.type,
           name: node.name,
           path: node.path,
-        };
+        });
       } else {
-        result[path] = {
+        result.push({
           type: node.type,
           name: node.name,
           path: node.path,
           content: node.content,
-        };
+        });
       }
     }
 
