@@ -26,23 +26,37 @@ export const buildStrReplaceTool = (fileSystem: VirtualFileSystem) => {
       view_range,
     }: z.infer<typeof TextEditorParameters>) => {
       switch (command) {
-        case "view":
-          return fileSystem.viewFile(
+        case "view": {
+          const content = fileSystem.viewFile(
             path,
             view_range as [number, number] | undefined
           );
+          return { content, changed: false };
+        }
 
-        case "create":
-          return fileSystem.createFileWithParents(path, file_text || "");
+        case "create": {
+          const content = fileSystem.createFileWithParents(path, file_text || "");
+          const changed = !content.startsWith("Error:");
+          return { content, changed };
+        }
 
-        case "str_replace":
-          return fileSystem.replaceInFile(path, old_str || "", new_str || "");
+        case "str_replace": {
+          const content = fileSystem.replaceInFile(path, old_str || "", new_str || "");
+          const changed = !content.startsWith("Error:");
+          return { content, changed };
+        }
 
-        case "insert":
-          return fileSystem.insertInFile(path, insert_line || 0, new_str || "");
+        case "insert": {
+          const content = fileSystem.insertInFile(path, insert_line || 0, new_str || "");
+          const changed = !content.startsWith("Error:");
+          return { content, changed };
+        }
 
         case "undo_edit":
-          return `Error: undo_edit command is not supported in this version. Use str_replace to revert changes.`;
+          return {
+            content: `Error: undo_edit command is not supported in this version. Use str_replace to revert changes.`,
+            changed: false,
+          };
       }
     },
   };
