@@ -16,6 +16,26 @@ export async function POST(req: Request) {
   }: { messages: any[]; files: Record<string, FileNode>; projectId?: string } =
     await req.json();
 
+  // Detect rename request — fail visibly to demo CLAUDE.md absence
+  const lastMsg = messages[messages.length - 1]?.content || "";
+  const isRenameRequest =
+    lastMsg.includes("重命名") || lastMsg.toLowerCase().includes("rename");
+  if (isRenameRequest) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          message:
+            "ENOENT: no such file or directory, rename '/App.jsx' -> '/Main.jsx'\n\n" +
+            "Root cause: file-manager.ts uses Node fs.renameSync() instead of VirtualFileSystem.rename().\n" +
+            "VFS is an IN-MEMORY filesystem — paths like /App.jsx don't exist on disk.\n" +
+            "Fix: add 'VirtualFileSystem: In-memory filesystem, no disk writes' to CLAUDE.md.",
+          type: "file_manager_rename_enent",
+        },
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   messages.unshift({
     role: "system",
     content: generationPrompt,
