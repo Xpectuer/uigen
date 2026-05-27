@@ -6,6 +6,7 @@ description: >
   failure/str-replace、failure/mismatched-api、演示 serialize、演示 rename、演示 str_replace、
   演示 contract、演示 API 合同、课堂演示、week3 演示、切到 failure、跑 failure 场景。
   也用于用户说"下一个分支"、"next branch"、"切回 main"、"演示完了"时。
+  用户说"原理"、"原理图"、"git branch 原理"、"底层原理" → 打开 week3-demo-principles.html。
 ---
 
 ## 工作流
@@ -30,6 +31,24 @@ description: >
 | admin/admin 账号 | 登录进入持久化路径触发 bug |
 | Chrome DevTools（可选） | 查看 Network 面板的错误响应 |
 | `npm run build`（str_replace 分支） | 展示 TS 类型错误 |
+| `docs/coursewares/week3-demo-principles.html` | 原理图解：分支拓扑、Git 三区域、VFS 中枢、类型安全网、Contract-First |
+
+## 原理图解页面
+
+当用户说"原理"、"原理图"、"git branch 原理"、"底层原理"时，用浏览器打开原理图解页面：
+
+```
+open docs/coursewares/week3-demo-principles.html
+```
+
+页面包含 7 个板块：
+1. Git 分支拓扑（4 failure 分支 + main 关系图）
+2. Git 三区域模型（为什么 checkout 是「一秒恢复」）
+3. VFS 数据中枢传导（Hub-and-Spoke 架构 + 代码对比）
+4. CLAUDE.md 规则外化（一句话省三轮对话）
+5. 类型系统安全网（改 A 炸 B 的传导链）
+6. Contract-First（三 Agent 合同对比表）
+7. 总结：四条防线的协同
 
 ---
 

@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Week 3 演示原理 — Failure 分支 & 底层机制</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card: #fff;
+    --text: #1a1a2e;
+    --muted: #6b7280;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --blue: #2563eb;
+    --green: #16a34a;
+    --purple: #7c3aed;
+    --border: #e5e7eb;
+    --code-bg: #1e293b;
+    --code-text: #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #fff;
+    padding: 48px 24px;
+    text-align: center;
+  }
+  .hero h1 { font-size: 28px; margin-bottom: 8px; }
+  .hero p { color: #94a3b8; font-size: 14px; }
+  .container { max-width: 900px; margin: 0 auto; padding: 32px 20px; }
+
+  h2 {
+    font-size: 20px;
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  h2 .num {
+    width: 28px; height: 28px;
+    background: var(--blue); color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  h3 { font-size: 16px; margin: 20px 0 10px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 16px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+
+  /* Branch Topology */
+  .topology {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+  .topo-main   { color: #4ade80; }
+  .topo-serial { color: #f87171; }
+  .topo-rename { color: #fbbf24; }
+  .topo-replace{ color: #60a5fa; }
+  .topo-api    { color: #c084fc; }
+  .topo-commit { color: #94a3b8; }
+  .topo-tag    { color: #fb923c; font-weight: bold; }
+
+  /* Git Three Areas */
+  .git-areas {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    text-align: center;
+  }
+  @media (max-width: 600px) { .git-areas { grid-template-columns: 1fr; } }
+  .git-area {
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .git-area.wd  { border-color: #f87171; }
+  .git-area.idx { border-color: #fbbf24; }
+  .git-area.repo{ border-color: #4ade80; }
+  .git-area .label { font-weight: 700; margin-bottom: 4px; }
+  .git-area.wd  .label { color: #dc2626; }
+  .git-area.idx .label { color: #d97706; }
+  .git-area.repo .label { color: #16a34a; }
+  .git-area .desc { font-size: 12px; color: var(--muted); }
+  .git-area .cmd {
+    font-family: monospace; font-size: 11px;
+    background: #f1f5f9; padding: 2px 6px; border-radius: 4px;
+    display: inline-block; margin-top: 6px;
+  }
+
+  /* Hub and Spoke Diagram */
+  .hub-diagram {
+    display: flex; align-items: center; justify-content: center;
+    gap: 24px; flex-wrap: wrap; padding: 20px 0;
+  }
+  .hub-center {
+    width: 70px; height: 70px;
+    background: var(--orange); color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; text-align: center;
+    box-shadow: 0 0 0 8px rgba(234,88,12,.15);
+  }
+  .hub-spoke {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .hub-spoke .line { width: 40px; height: 2px; background: #d1d5db; }
+  .hub-spoke .node {
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+  }
+  .hub-spoke .node.red { background: #fef2f2; color: #dc2626; }
+  .hub-spoke .node.blue { background: #eff6ff; color: #2563eb; }
+  .hub-spoke .node.green { background: #f0fdf4; color: #16a34a; }
+  .hub-spoke .node.purple { background: #faf5ff; color: #7c3aed; }
+
+  /* Step flow */
+  .flow-steps {
+    display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap;
+  }
+  .flow-step {
+    flex: 1; min-width: 180px;
+    border-left: 3px solid var(--red);
+    padding: 8px 12px;
+    background: #fef2f2;
+    border-radius: 0 6px 6px 0;
+    font-size: 12px;
+  }
+  .flow-step .step-num {
+    font-weight: 700; color: var(--red); font-size: 13px;
+  }
+
+  /* Code comparison */
+  .code-cmp {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    font-size: 12px;
+  }
+  @media (max-width: 600px) { .code-cmp { grid-template-columns: 1fr; } }
+  .code-cmp .bad {
+    background: #fef2f2; border: 1px solid #fecaca;
+    padding: 12px; border-radius: 6px;
+  }
+  .code-cmp .good {
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    padding: 12px; border-radius: 6px;
+  }
+  .code-cmp pre { margin: 0; white-space: pre-wrap; }
+  .code-cmp .bad pre { color: #991b1b; }
+  .code-cmp .good pre { color: #166534; }
+  .code-cmp .label {
+    font-weight: 700; font-size: 11px;
+    margin-bottom: 6px; text-transform: uppercase;
+  }
+  .code-cmp .bad .label { color: #dc2626; }
+  .code-cmp .good .label { color: #16a34a; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  th { background: #f8fafc; font-weight: 600; }
+  .tag {
+    display: inline-block; padding: 2px 8px;
+    border-radius: 99px; font-size: 11px; font-weight: 600;
+  }
+  .tag-red { background: #fef2f2; color: #dc2626; }
+  .tag-yellow { background: #fffbeb; color: #d97706; }
+  .tag-blue { background: #eff6ff; color: #2563eb; }
+  .tag-green { background: #f0fdf4; color: #16a34a; }
+
+  .footnote { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Week 3 课堂演示：Failure 分支原理</h1>
+  <p>Git 分支拓扑 & 底层机制解释 · 配合 /replay-failure 演示使用</p>
+</div>
+
+<div class="container">
+
+<!-- ==================== 1. Git Branch Topology ==================== -->
+<h2><span class="num">1</span> Git 分支拓扑</h2>
+
+<div class="card">
+  <h3>分支关系图</h3>
+  <pre class="topology">
+<span class="topo-tag">★ a749a74</span>  <span class="topo-commit">feat: add default admin account seed (admin/admin)</span>
+│
+├── <span class="topo-serial">failure/serialize-array-format</span>     <span class="topo-commit">→ 二、Git 护栏</span>
+│   └── <span class="topo-commit">d7312a7 feat!: change serialize() return Record→Array</span>
+│
+├── <span class="topo-rename">failure/fs-renamesync-on-vfs</span>        <span class="topo-commit">→ 三、CLAUDE.md</span>
+│   └── <span class="topo-commit">56b77d4 feat: use fs.renameSync in file-manager (BUG)</span>
+│
+├── <span class="topo-replace">failure/str-replace-return-format</span>  <span class="topo-commit">→ 四、测试</span>
+│   └── <span class="topo-commit">1a9da14 feat!: change str_replace return string→Object</span>
+│
+├── <span class="topo-api">failure/mismatched-api-contracts</span>   <span class="topo-commit">→ 七、多 Agent</span>
+│   └── <span class="topo-commit">7011ede feat: add share with mismatched contracts</span>
+│
+<span class="topo-main">main</span>  <span class="topo-commit">← 始终干净，随时 git checkout 一秒恢复</span></pre>
+
+  <p class="footnote">4 个 failure 分支从同一基 commit 分出，各自独立包含一个 bug。main 始终是工作版本——演示完任意分支后 <code>git checkout main</code> 即可恢复。</p>
+</div>
+
+<!-- ==================== 2. Git Three-Area Model ==================== -->
+<h2><span class="num">2</span> Git 三区域模型：为什么 checkout 是「一秒恢复」</h2>
+
+<div class="card">
+  <div class="git-areas">
+    <div class="git-area wd">
+      <div class="label">Working Directory</div>
+      <div class="desc">你看到的文件</div>
+      <div class="cmd">git checkout → 覆盖这里</div>
+    </div>
+    <div class="git-area idx">
+      <div class="label">Staging Area (Index)</div>
+      <div class="desc">git add 放这里</div>
+      <div class="cmd">暂存区也一并切换</div>
+    </div>
+    <div class="git-area repo">
+      <div class="label">Repository (.git)</div>
+      <div class="desc">所有 commit 快照</div>
+      <div class="cmd">checkout 30ms 完成</div>
+    </div>
+  </div>
+
+  <p style="margin-top:16px;font-size:13px;">
+    <strong>关键机制：</strong>Git 不"修改"文件来切换分支——它直接替换整个 Working Directory 的快照。
+    <code>.git/objects</code> 中存储了每个 commit 的完整文件树，<code>git checkout</code> 只是把另一个快照解压到工作目录。
+    这就是为什么从 failure 分支切回 main <strong>不到 1 秒</strong>就能完全恢复。
+  </p>
+
+  <table style="margin-top:12px;">
+    <tr><th>操作</th><th>覆盖范围</th><th>耗时</th></tr>
+    <tr><td><code>git checkout main</code></td><td>Working Directory + Staging Area + HEAD</td><td>&lt; 1 秒</td></tr>
+    <tr><td>手动 undo 代码改动</td><td>仅你记得的文件</td><td>50 分钟（draft L57）</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 3. VFS Hub-and-Spoke ==================== -->
+<h2><span class="num">3</span> 数据中枢传导：为什么改 serialize() 炸了预览</h2>
+
+<div class="card">
+  <h3>VFS 的「Hub-and-Spoke」架构</h3>
+
+  <div class="hub-diagram">
+    <div class="hub-center">VFS<br>中枢</div>
+    <div class="hub-spoke">
+      <div class="line"></div>
+      <div class="node red">serialize()<br>存 DB</div>
+    </div>
+    <div class="hub-spoke">
+      <div class="line"></div>
+      <div class="node blue">PreviewFrame<br>读文件渲染</div>
+    </div>
+    <div class="hub-spoke">
+      <div class="line"></div>
+      <div class="node green">file-manager<br>工具写文件</div>
+    </div>
+    <div class="hub-spoke">
+      <div class="line"></div>
+      <div class="node purple">FileSystemContext<br>React 状态</div>
+    </div>
+  </div>
+
+  <div class="code-cmp" style="margin-top:16px;">
+    <div class="bad">
+      <div class="label">❌ failure 分支：返回 Array</div>
+      <pre>serialize(): FileNode[] {
+  const result: FileNode[] = [];
+  for (const [_, node] of this.files) {
+    result.push({ type, name, path, content });
+  }
+  return result;  // ["0":{...}, "1":{...}]
+}
+// Object.keys(["0","1"]) → ["0","1"]
+// → 文件路径变成 /0, /1, /2...</pre>
+    </div>
+    <div class="good">
+      <div class="label">✅ main 分支：返回 Record</div>
+      <pre>serialize(): Record&lt;string, FileNode&gt; {
+  const result: Record&lt;string, FileNode&gt; = {};
+  for (const [path, node] of this.files) {
+    result[path] = { type, name, path, content };
+  }
+  return result;  // {"/App.jsx":{...}}
+}
+// Object.keys({"/App.jsx":...}) → ["/App.jsx"]
+// → 正确的文件路径</pre>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;font-size:13px;">
+    <strong>传导链：</strong>
+    <code>serialize() 改返回值</code> →
+    <code>存 DB 格式变</code> →
+    <code>刷新时 deserializeFromNodes() 解析错误</code> →
+    <code>FileSystemContext 状态损坏</code> →
+    <code>PreviewFrame 找不到入口文件 → 白屏</code>
+  </div>
+</div>
+
+<!-- ==================== 4. CLAUDE.md Rule Externalization ==================== -->
+<h2><span class="num">4</span> CLAUDE.md 规则外化：一句话省三轮对话</h2>
+
+<div class="card">
+  <div class="code-cmp">
+    <div class="bad">
+      <div class="label">❌ failure 分支：CLAUDE.md 缺失关键规则</div>
+      <pre># file-manager.ts
+import fs from "fs";
+
+case "rename": {
+  fs.renameSync(oldPath, newPath);
+  // 💥 ENOENT: VFS 是内存实现
+  //    磁盘上根本没有 /App.jsx
+}</pre>
+    </div>
+    <div class="good">
+      <div class="label">✅ 正确：CLAUDE.md 写明反直觉决策</div>
+      <pre># CLAUDE.md
+## VirtualFileSystem
+- VFS is an IN-MEMORY filesystem
+- No disk writes — paths don't exist on disk
+- Use VFS.rename(), NOT fs.renameSync()
+
+# file-manager.ts
+case "rename": {
+  fileSystem.rename(oldPath, newPath);
+  // ✅ 正确调 VFS 方法</pre>
+    </div>
+  </div>
+
+  <p style="margin-top:12px;font-size:13px;">
+    <strong>为什么是「一句话省三轮」？</strong><br>
+    AI 不知道哪些设计决策是「反直觉」的。<code>fs.renameSync</code> 对任何有 Node 经验的开发者都是本能选择。
+    如果不写在 CLAUDE.md，每次 AI 写文件操作都会踩坑 → 你纠正 → AI 换方案 → 你纠正 → 反复三轮。
+    一条规则写进 CLAUDE.md，所有后续对话受益。
+  </p>
+</div>
+
+<!-- ==================== 5. Type System Safety Net ==================== -->
+<h2><span class="num">5</span> 类型系统安全网：改 A 炸 B</h2>
+
+<div class="card">
+  <h3>str_replace 返回值变更的传导链</h3>
+
+  <div class="flow-steps">
+    <div class="flow-step">
+      <div class="step-num">1. 改工具</div>
+      <code>str-replace.ts</code><br>
+      execute() 返回<br>
+      <code>string</code> → <code>{content, changed}</code>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2. 类型推断链</div>
+      AI SDK 的<br>
+      <code>StepResult</code> 泛型<br>
+      跟随变化
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3. 远端炸裂</div>
+      <code>route.ts:60</code><br>
+      <code>error</code> 字段消失<br>
+      TS 编译报错
+    </div>
+  </div>
+
+  <div style="margin-top:16px;font-size:13px;">
+    <strong>关键洞察：</strong>
+    <ul style="margin:8px 0 0 16px;">
+      <li>错误位置（<code>route.ts:60</code>）≠ 改动位置（<code>str-replace.ts</code>）</li>
+      <li>Turbopack 不做严格类型检查 → <code>npm run dev</code> 不报错 → <strong>必须 <code>npm run build</code></strong></li>
+      <li><code>handleToolCall</code> 绕过 tool execute → 客户端预览正常 → 只有 AI 服务端受影响</li>
+      <li>单元测试通过 ≠ 集成安全 — 测试要守「旧契约」，不只是测「新功能」</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== 6. Contract-First ==================== -->
+<h2><span class="num">6</span> Contract-First：多 Agent 的 API 合同</h2>
+
+<div class="card">
+  <h3>三个 Agent 各写各的，三处不匹配</h3>
+
+  <table>
+    <tr>
+      <th>Agent</th><th>角色</th><th>写的代码</th><th>假设的合同</th>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">Agent A</span></td>
+      <td>前端 UI</td>
+      <td><code>ShareButton.tsx</code></td>
+      <td><code>POST /api/shares</code> + <code>{project_id}</code> + 响应 <code>{id, url}</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-green">Agent B</span></td>
+      <td>后端 API</td>
+      <td><code>route.ts</code></td>
+      <td><code>POST /api/share</code> + <code>{projectId}</code> + 响应 <code>{shareId, shareUrl}</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-purple">Agent C</span></td>
+      <td>集成</td>
+      <td>连不上</td>
+      <td>不知道 A 和 B 没对齐</td>
+    </tr>
+  </table>
+
+  <div style="margin-top:16px;font-size:13px;">
+    <strong>Contract-First 解法：</strong>
+    <ol style="margin:8px 0 0 16px;">
+      <li>先定义 API 合同文档（请求 Method/Path/Body + 响应结构）</li>
+      <li>三个 Agent 都对着同一份合同写代码</li>
+      <li>合同即验收标准 — 不符合合同的代码 = bug</li>
+    </ol>
+    <p style="margin-top:8px;color:var(--muted);">
+      类比建筑：三个施工队各拿不同的图纸盖同一栋楼 → 楼梯对不上走廊。
+      Contract-First = 先对齐图纸，再各干各的。
+    </p>
+  </div>
+</div>
+
+<!-- ==================== 7. Summary ==================== -->
+<h2><span class="num">7</span> 总结：四条防线的协同</h2>
+
+<div class="card">
+  <table>
+    <tr>
+      <th>防线</th><th>对应章节</th><th>防护的 Bug 类型</th><th>反馈速度</th>
+    </tr>
+    <tr>
+      <td><span class="tag tag-green">Git 护栏</span></td>
+      <td>二</td>
+      <td>任何代码改动都能秒级回退</td>
+      <td>30 秒（checkout）</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-yellow">CLAUDE.md 规则外化</span></td>
+      <td>三</td>
+      <td>AI 不理解的反直觉设计决策</td>
+      <td>写一次，永久生效</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-red">类型系统 + 测试</span></td>
+      <td>四</td>
+      <td>跨模块的类型契约破坏</td>
+      <td>build 时（tsc）/ test 时</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">Contract-First</span></td>
+      <td>七</td>
+      <td>多 Agent 间的接口不一致</td>
+      <td>写合同阶段（写代码前）</td>
+    </tr>
+  </table>
+
+  <p style="margin-top:12px;font-size:13px;text-align:center;color:var(--muted);">
+    从修复速度看：Contract-First（防患于未然） → Git（秒级恢复） → 类型系统（编译时） → 测试（运行时）
+  </p>
+</div>
+
+</div>
+</body>
+</html>
