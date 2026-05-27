@@ -4,7 +4,7 @@ import fs from "fs";
 import { VirtualFileSystem } from "../file-system";
 
 // Exported so route.ts can detect ENOENT and surface it to the browser
-export const fileManagerState = { fileManagerState.lastRenameError: null as string | null };
+export const fileManagerState: { lastRenameError: string | null } = { lastRenameError: null };
 
 export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
   return tool({
