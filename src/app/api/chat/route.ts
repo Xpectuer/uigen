@@ -2,7 +2,7 @@ import type { FileNode } from "@/lib/file-system";
 import { VirtualFileSystem } from "@/lib/file-system";
 import { streamText, appendResponseMessages } from "ai";
 import { buildStrReplaceTool } from "@/lib/tools/str-replace";
-import { buildFileManagerTool } from "@/lib/tools/file-manager";
+import { buildFileManagerTool, lastRenameError } from "@/lib/tools/file-manager";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getLanguageModel } from "@/lib/provider";
@@ -143,6 +143,18 @@ export async function POST(req: Request) {
                   }
                 });
                 controller.enqueue(encoder.encode(`3:${errorData}\n`));
+              }
+
+              // Inject file_manager ENOENT into the browser
+              if (lastRenameError) {
+                const errorData = JSON.stringify({
+                  error: {
+                    message: lastRenameError,
+                    type: "file_manager_rename_enent"
+                  }
+                });
+                controller.enqueue(encoder.encode(`3:${errorData}\n`));
+                lastRenameError = null; // Reset for next request
               }
               controller.close();
               break;

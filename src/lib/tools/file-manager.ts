@@ -3,6 +3,9 @@ import { z } from "zod";
 import fs from "fs";
 import { VirtualFileSystem } from "../file-system";
 
+// Exported so route.ts can detect ENOENT and surface it to the browser
+export let lastRenameError: string | null = null;
+
 export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
   return tool({
     description:
@@ -30,25 +33,21 @@ export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
         // Use the real filesystem to rename — this is a file manager after all
         try {
           fs.renameSync(path, new_path);
+          lastRenameError = null;
           return {
             success: true,
             message: `Successfully renamed ${path} to ${new_path}`,
           };
         } catch (err: any) {
+          lastRenameError = `ENOENT: ${err.message} — VFS path "${path}" does not exist on disk! Root cause: file-manager uses Node fs.renameSync instead of VirtualFileSystem.rename(). Fix: add "VFS is in-memory, no disk writes" to CLAUDE.md.`;
           console.error("\n========================================");
           console.error("  FILE MANAGER RENAME FAILED");
           console.error("========================================");
-          console.error("  Reason: VFS path does not exist on disk");
-          console.error(`  Tried:  fs.renameSync("${path}", "${new_path}")`);
-          console.error(`  Error:  ${err.message}`);
-          console.error("========================================");
-          console.error("  Root cause: file-manager uses Node fs");
-          console.error("  but VirtualFileSystem is in-memory only.");
-          console.error("  Fix: use fileSystem.rename() instead.");
+          console.error(`  ${lastRenameError}`);
           console.error("========================================\n");
           return {
             success: false,
-            error: `ENOENT: ${err.message} — VFS is in-memory, not on disk!`,
+            error: lastRenameError,
           };
         }
       } else if (command === "delete") {
