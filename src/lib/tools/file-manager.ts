@@ -28,11 +28,29 @@ export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
           };
         }
         // Use the real filesystem to rename — this is a file manager after all
-        fs.renameSync(path, new_path);
-        return {
-          success: true,
-          message: `Successfully renamed ${path} to ${new_path}`,
-        };
+        try {
+          fs.renameSync(path, new_path);
+          return {
+            success: true,
+            message: `Successfully renamed ${path} to ${new_path}`,
+          };
+        } catch (err: any) {
+          console.error("\n========================================");
+          console.error("  FILE MANAGER RENAME FAILED");
+          console.error("========================================");
+          console.error("  Reason: VFS path does not exist on disk");
+          console.error(`  Tried:  fs.renameSync("${path}", "${new_path}")`);
+          console.error(`  Error:  ${err.message}`);
+          console.error("========================================");
+          console.error("  Root cause: file-manager uses Node fs");
+          console.error("  but VirtualFileSystem is in-memory only.");
+          console.error("  Fix: use fileSystem.rename() instead.");
+          console.error("========================================\n");
+          return {
+            success: false,
+            error: `ENOENT: ${err.message} — VFS is in-memory, not on disk!`,
+          };
+        }
       } else if (command === "delete") {
         const success = fileSystem.deleteFile(path);
         if (success) {
