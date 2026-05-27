@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UIGen 仓库分支拓扑图</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #a371f7;
+    --cyan: #39d2c0;
+    --pink: #db61a2;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Mono", "Fira Code", monospace;
+    padding: 48px 24px;
+    min-height: 100vh;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 40px;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 36px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  /* ── Graph ── */
+  .graph {
+    background: #161b22;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px 24px 24px;
+    overflow-x: auto;
+  }
+
+  .branch-row {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    position: relative;
+  }
+
+  .branch-label {
+    width: 200px;
+    flex-shrink: 0;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .branch-label .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .tag-main    { background: var(--green); color: #000; }
+  .tag-failure { background: var(--orange); color: #000; }
+
+  .commit-line {
+    flex: 1;
+    position: relative;
+    height: 48px;
+  }
+
+  .commit-node {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .commit-node:hover {
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+
+  .commit-node.main    { background: var(--green); }
+  .commit-node.feature { background: var(--accent); }
+  .commit-node.failure { background: var(--orange); }
+  .commit-node.merge   { background: var(--purple); }
+  .commit-node.initial { background: var(--muted); }
+
+  .commit-connector {
+    position: absolute;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .commit-connector.horz {
+    height: 0;
+    border-bottom: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .commit-connector.branch-off {
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+  }
+
+  /* ── Tooltip ── */
+  .node-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1c2128;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 10;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  .node-tooltip .hash { color: var(--muted); font-size: 10px; }
+  .node-tooltip .msg  { color: var(--text); margin-top: 2px; }
+
+  .commit-node:hover .node-tooltip { display: block; }
+
+  /* ── Branch Description Cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 36px;
+  }
+
+  .card {
+    background: #161b22;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+  }
+
+  .card h3 {
+    font-size: 14px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card .icon { font-size: 16px; }
+
+  .card .desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .card .commits {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .card .commits span {
+    background: #21262d;
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    margin-top: 32px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>UIGen 仓库分支拓扑</h1>
+  <p class="subtitle">教学演示分支 — 「常见失败模式」集合</p>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--green)"></span> main 主线</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span> failure/* 失败案例</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--muted)"></span> 初始提交</div>
+  </div>
+
+  <!-- Graph -->
+  <div class="graph">
+    <!-- Row 0: main -->
+    <div class="branch-row">
+      <div class="branch-label">
+        <span class="tag tag-main">main</span>
+      </div>
+      <div class="commit-line" style="position:relative">
+        <!-- Initial commit -->
+        <div class="commit-node initial" style="left:5%">
+          <div class="node-tooltip"><span class="hash">c82e36a</span><span class="msg">🎉 initial commit</span></div>
+        </div>
+        <!-- update prompt counter -->
+        <div class="commit-node main" style="left:15%">
+          <div class="node-tooltip"><span class="hash">3ba689d</span><span class="msg">🔧 update prompt counter</span></div>
+        </div>
+        <!-- fix ReadableStream -->
+        <div class="commit-node main" style="left:25%">
+          <div class="node-tooltip"><span class="hash">8467000</span><span class="msg">🐛 fix ReadableStream crash</span></div>
+        </div>
+        <!-- seed admin -->
+        <div class="commit-node main" style="left:35%">
+          <div class="node-tooltip"><span class="hash">a749a74</span><span class="msg">feat: add default admin account seed</span></div>
+        </div>
+        <!-- HEAD -->
+        <div class="commit-node main" style="left:85%; width:13px; height:13px; border: 2px solid var(--green);">
+          <div class="node-tooltip"><span class="hash">d2860fd</span><span class="msg">fix: replace next/font/google → system fonts</span></div>
+        </div>
+
+        <!-- Connectors (main line) -->
+        <div class="commit-connector horz" style="left:5%; top:50%; width:80%"></div>
+      </div>
+    </div>
+
+    <!-- Row 1: failure/serialize-array-format -->
+    <div class="branch-row">
+      <div class="branch-label">
+        <span class="tag tag-failure">failure/serialize-array-format</span>
+      </div>
+      <div class="commit-line" style="position:relative">
+        <div class="commit-node failure" style="left:35%; top:0">
+          <div class="node-tooltip"><span class="hash">d7312a7</span><span class="msg">feat!: serialize() Record → Array</span></div>
+        </div>
+        <div class="commit-node failure" style="left:48%">
+          <div class="node-tooltip"><span class="hash">9469290</span><span class="msg">feat: createExportHTML + configurable URL</span></div>
+        </div>
+        <div class="commit-node failure" style="left:78%">
+          <div class="node-tooltip"><span class="hash">943fc61</span><span class="msg">fix: replace next/font/google</span></div>
+        </div>
+        <!-- branch off curve from main -->
+        <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none">
+          <path d="M35% 50% Q 35% -10%, 38% 0%" stroke="#d29922" stroke-width="1.5" fill="none" opacity="0.6"/>
+        </svg>
+        <div class="commit-connector horz" style="left:35%; top:0; width:43%"></div>
+      </div>
+    </div>
+
+    <!-- Row 2: failure/fs-renamesync-on-vfs -->
+    <div class="branch-row">
+      <div class="branch-label">
+        <span class="tag tag-failure">failure/fs-renamesync-on-vfs</span>
+      </div>
+      <div class="commit-line" style="position:relative">
+        <div class="commit-node failure" style="left:35%; top:0">
+          <div class="node-tooltip"><span class="hash">56b77d4</span><span class="msg">feat: use fs.renameSync</span></div>
+        </div>
+        <div class="commit-node failure" style="left:42%">
+          <div class="node-tooltip"><span class="hash">bf8c3cd</span><span class="msg">fix: replace next/font/google</span></div>
+        </div>
+        <div class="commit-node failure" style="left:49%">
+          <div class="node-tooltip"><span class="hash">b2067b3</span><span class="msg">feat(mock): rename handler</span></div>
+        </div>
+        <div class="commit-node failure" style="left:56%">
+          <div class="node-tooltip"><span class="hash">2fe446f</span><span class="msg">fix: let ENOENT throw directly</span></div>
+        </div>
+        <div class="commit-node failure" style="left:63%">
+          <div class="node-tooltip"><span class="hash">e913bb3</span><span class="msg">fix: loud console.error for ENOENT</span></div>
+        </div>
+        <div class="commit-node failure" style="left:70%">
+          <div class="node-tooltip"><span class="hash">59e61c9</span><span class="msg">feat: surface ENOENT in chat UI</span></div>
+        </div>
+        <div class="commit-node failure" style="left:77%">
+          <div class="node-tooltip"><span class="hash">6220381</span><span class="msg">feat: return 500 ENOENT on rename</span></div>
+        </div>
+        <div class="commit-node failure" style="left:84%">
+          <div class="node-tooltip"><span class="hash">9349f5f</span><span class="msg">fix: mutable import binding</span></div>
+        </div>
+        <div class="commit-node failure" style="left:91%">
+          <div class="node-tooltip"><span class="hash">b55beb1</span><span class="msg">fix: correct fileManagerState</span></div>
+        </div>
+        <div class="commit-connector horz" style="left:35%; top:0; width:56%"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: failure/str-replace-return-format -->
+    <div class="branch-row">
+      <div class="branch-label">
+        <span class="tag tag-failure">failure/str-replace-return-format</span>
+      </div>
+      <div class="commit-line" style="position:relative">
+        <div class="commit-node failure" style="left:35%; top:0">
+          <div class="node-tooltip"><span class="hash">1a9da14</span><span class="msg">feat!: str_replace return format change</span></div>
+        </div>
+        <div class="commit-node failure" style="left:78%">
+          <div class="node-tooltip"><span class="hash">ecbcd23</span><span class="msg">fix: replace next/font/google</span></div>
+        </div>
+        <div class="commit-connector horz" style="left:35%; top:0; width:43%"></div>
+      </div>
+    </div>
+
+    <!-- Row 4: failure/mismatched-api-contracts -->
+    <div class="branch-row">
+      <div class="branch-label">
+        <span class="tag tag-failure">failure/mismatched-api-contracts</span>
+      </div>
+      <div class="commit-line" style="position:relative">
+        <div class="commit-node failure" style="left:35%; top:0">
+          <div class="node-tooltip"><span class="hash">7011ede</span><span class="msg">feat: component share feature</span></div>
+        </div>
+        <div class="commit-node failure" style="left:48%">
+          <div class="node-tooltip"><span class="hash">46c33e0</span><span class="msg">fix: wire ShareButton</span></div>
+        </div>
+        <div class="commit-node failure" style="left:78%">
+          <div class="node-tooltip"><span class="hash">5df77f9</span><span class="msg">fix: replace next/font/google</span></div>
+        </div>
+        <div class="commit-node failure" style="left:91%">
+          <div class="node-tooltip"><span class="hash">317d655</span><span class="msg">🔧 fix: remove broken createExportHTML</span></div>
+        </div>
+        <div class="commit-connector horz" style="left:35%; top:0; width:56%"></div>
+      </div>
+    </div>
+
+    <!-- Branch-off markers -->
+    <div style="padding-left:200px; margin-top:8px; font-size:10px; color:var(--muted); display:flex; gap:16px; flex-wrap:wrap">
+      <span>⬑ 4 条 failure/* 分支均从 main 的 a749a74 节点分出</span>
+    </div>
+  </div>
+
+  <!-- Branch Description Cards -->
+  <div class="cards">
+    <div class="card">
+      <h3><span class="icon">🔀</span> serialize-array-format</h3>
+      <p class="desc">将 <code>serialize()</code> 的返回值从 <code>Record</code> 改为 <code>Array</code>，导致下游消费者（<code>importProject()</code>、<code>shareProject()</code>）因类型不匹配而失败。</p>
+      <p class="commits"><span>3 commits</span> — 演示数据格式契约变更</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="icon">📁</span> fs-renamesync-on-vfs</h3>
+      <p class="desc"><code>FileManager</code> 中使用 <code>fs.renameSync</code> 对 <code>VirtualFileSystem</code> 做重命名，但 VFS 没有实现 POSIX rename 语义，导致 <code>ENOENT</code> 抛出。</p>
+      <p class="commits"><span>9 commits</span> — 最详细的渐进式 debug 过程</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="icon">🔄</span> str-replace-return-format</h3>
+      <p class="desc"><code>str_replace_editor</code> 工具的返回值从纯字符串变为 <code>{content, changes}</code> 结构体，AI 仍按旧格式解析导致预览渲染崩溃。</p>
+      <p class="commits"><span>2 commits</span> — 演示工具返回值 breaking change</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="icon">📡</span> mismatched-api-contracts</h3>
+      <p class="desc">添加 component share 功能时，前端 <code>ShareButton</code> 和后端 <code>/api/share</code> 的 API 契约不一致（字段名、请求方法），导致 share 功能静默失败 + 构建报错。</p>
+      <p class="commits"><span>4 commits</span> — 演示前后端契约对齐问题</p>
+    </div>
+  </div>
+
+  <p class="footer">UIGen — AI Component Generator &nbsp;|&nbsp; 5 branches &nbsp;|&nbsp; 当前 HEAD: d2860fd</p>
+</div>
+
+</body>
+</html>
