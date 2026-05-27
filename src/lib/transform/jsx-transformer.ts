@@ -83,13 +83,24 @@ export function createBlobURL(
   return URL.createObjectURL(blob);
 }
 
+function createDataURI(
+  code: string,
+  mimeType: string = "application/javascript"
+): string {
+  const base64 = btoa(unescape(encodeURIComponent(code)));
+  return `data:${mimeType};base64,${base64}`;
+}
+
 export interface ImportMapResult {
   importMap: string;
   styles: string;
   errors: Array<{ path: string; error: string }>;
 }
 
-export function createImportMap(files: Map<string, string>): ImportMapResult {
+export function createImportMap(
+  files: Map<string, string>,
+  urlCreator: (code: string, mimeType?: string) => string = createBlobURL
+): ImportMapResult {
   const imports: Record<string, string> = {
     react: "https://esm.sh/react@19",
     "react-dom": "https://esm.sh/react-dom@19",
@@ -128,8 +139,8 @@ export function createImportMap(files: Map<string, string>): ImportMapResult {
       }
       
       // Normal successful transform
-      const blobUrl = createBlobURL(code);
-      transformedFiles.set(path, blobUrl);
+      const moduleUrl = urlCreator(code);
+      transformedFiles.set(path, moduleUrl);
 
       // Collect all imports
       if (missingImports) {
@@ -157,27 +168,27 @@ export function createImportMap(files: Map<string, string>): ImportMapResult {
       }
 
       // Add to import map with absolute path
-      imports[path] = blobUrl;
+      imports[path] = moduleUrl;
 
       // Also add without leading slash
       if (path.startsWith("/")) {
-        imports[path.substring(1)] = blobUrl;
+        imports[path.substring(1)] = moduleUrl;
       }
 
       // Add @/ alias support - maps @/ to root directory
       if (path.startsWith("/")) {
-        imports["@" + path] = blobUrl;
-        imports["@/" + path.substring(1)] = blobUrl;
+        imports["@" + path] = moduleUrl;
+        imports["@/" + path.substring(1)] = moduleUrl;
       }
 
       // Add entries without file extensions for all variations
       const pathWithoutExt = path.replace(/\.(jsx?|tsx?)$/, "");
-      imports[pathWithoutExt] = blobUrl;
+      imports[pathWithoutExt] = moduleUrl;
 
       if (path.startsWith("/")) {
-        imports[pathWithoutExt.substring(1)] = blobUrl;
-        imports["@" + pathWithoutExt] = blobUrl;
-        imports["@/" + pathWithoutExt.substring(1)] = blobUrl;
+        imports[pathWithoutExt.substring(1)] = moduleUrl;
+        imports["@" + pathWithoutExt] = moduleUrl;
+        imports["@/" + pathWithoutExt.substring(1)] = moduleUrl;
       }
     } else if (path.endsWith(".css")) {
       // Collect CSS file content
@@ -256,7 +267,7 @@ export function createImportMap(files: Map<string, string>): ImportMapResult {
 
       // Create placeholder module
       const placeholderCode = createPlaceholderModule(componentName);
-      const placeholderUrl = createBlobURL(placeholderCode);
+      const placeholderUrl = urlCreator(placeholderCode);
 
       // Add all possible import variations
       imports[importPath] = placeholderUrl;
@@ -470,4 +481,28 @@ export function createPreviewHTML(
   </script>` : ''}
 </body>
 </html>`;
+}
+
+export function createExportHTML(files: Map<string, string>): string {
+  const possibleEntries = [
+    "/App.jsx", "/App.tsx", "/index.jsx", "/index.tsx",
+    "/src/App.jsx", "/src/App.tsx",
+  ];
+
+  let entryPoint = possibleEntries.find((path) => files.has(path));
+  if (!entryPoint) {
+    const firstJSX = Array.from(files.keys()).find(
+      (path) => path.endsWith(".jsx") || path.endsWith(".tsx")
+    );
+    if (firstJSX) {
+      entryPoint = firstJSX;
+    }
+  }
+
+  if (!entryPoint) {
+    return `<!DOCTYPE html><html><body><h1>No files to export</h1></body></html>`;
+  }
+
+  const { importMap, styles, errors } = createImportMap(files, createDataURI);
+  return createPreviewHTML(entryPoint, importMap, styles, errors);
 }
