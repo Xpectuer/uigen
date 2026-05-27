@@ -4,7 +4,7 @@ import fs from "fs";
 import { VirtualFileSystem } from "../file-system";
 
 // Exported so route.ts can detect ENOENT and surface it to the browser
-export let lastRenameError: string | null = null;
+export const fileManagerState = { fileManagerState.lastRenameError: null as string | null };
 
 export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
   return tool({
@@ -33,21 +33,21 @@ export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
         // Use the real filesystem to rename — this is a file manager after all
         try {
           fs.renameSync(path, new_path);
-          lastRenameError = null;
+          fileManagerState.lastRenameError = null;
           return {
             success: true,
             message: `Successfully renamed ${path} to ${new_path}`,
           };
         } catch (err: any) {
-          lastRenameError = `ENOENT: ${err.message} — VFS path "${path}" does not exist on disk! Root cause: file-manager uses Node fs.renameSync instead of VirtualFileSystem.rename(). Fix: add "VFS is in-memory, no disk writes" to CLAUDE.md.`;
+          fileManagerState.lastRenameError = `ENOENT: ${err.message} — VFS path "${path}" does not exist on disk! Root cause: file-manager uses Node fs.renameSync instead of VirtualFileSystem.rename(). Fix: add "VFS is in-memory, no disk writes" to CLAUDE.md.`;
           console.error("\n========================================");
           console.error("  FILE MANAGER RENAME FAILED");
           console.error("========================================");
-          console.error(`  ${lastRenameError}`);
+          console.error(`  ${fileManagerState.lastRenameError}`);
           console.error("========================================\n");
           return {
             success: false,
-            error: lastRenameError,
+            error: fileManagerState.lastRenameError,
           };
         }
       } else if (command === "delete") {
