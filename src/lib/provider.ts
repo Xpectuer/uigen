@@ -61,6 +61,40 @@ export class MockLanguageModel implements LanguageModelV1 {
     // Count tool messages to determine which step we're on
     const toolMessageCount = messages.filter((m) => m.role === "tool").length;
 
+    // Handle rename requests — triggers file_manager rename → ENOENT on fs.renameSync
+    if (
+      userPrompt.includes("重命名") ||
+      userPrompt.toLowerCase().includes("rename")
+    ) {
+      const text = "Let me rename that file for you.";
+      for (const char of text) {
+        yield { type: "text-delta", textDelta: char };
+        await this.delay(25);
+      }
+
+      const oldPath = userPrompt.includes("App.jsx") ? "/App.jsx" : "/somefile.jsx";
+      const newPath = userPrompt.includes("Main.jsx") ? "/Main.jsx" : "/renamed.jsx";
+
+      yield {
+        type: "tool-call",
+        toolCallType: "function",
+        toolCallId: `call_rename_1`,
+        toolName: "file_manager",
+        args: JSON.stringify({
+          command: "rename",
+          path: oldPath,
+          new_path: newPath,
+        }),
+      };
+
+      yield {
+        type: "finish",
+        finishReason: "tool-calls",
+        usage: { promptTokens: 50, completionTokens: 30 },
+      };
+      return;
+    }
+
     // Determine component type from the original user prompt
     const promptLower = userPrompt.toLowerCase();
     let componentType = "counter";
