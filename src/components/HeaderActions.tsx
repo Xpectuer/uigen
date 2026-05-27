@@ -3,9 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Plus, LogOut, FolderOpen, ChevronDown, Download, Share2 } from "lucide-react";
-import { useFileSystem } from "@/lib/contexts/file-system-context";
-import { createExportHTML } from "@/lib/transform/jsx-transformer";
+import { Plus, LogOut, FolderOpen, ChevronDown } from "lucide-react";
 import { AuthDialog } from "@/components/auth/AuthDialog";
 import { ShareButton } from "@/components/ShareButton";
 import { signOut } from "@/actions";
@@ -95,35 +93,10 @@ export function HeaderActions({ user, projectId }: HeaderActionsProps) {
     router.push(`/${project.id}`);
   };
 
-  const { getAllFiles } = useFileSystem();
-
-  const handleExport = () => {
-    const files = getAllFiles();
-    if (files.size === 0) return;
-
-    const html = createExportHTML(files);
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "uigen-export.html";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   if (!user) {
     return (
       <>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5"
-            onClick={handleExport}
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </Button>
           <Button variant="outline" className="h-8" onClick={handleSignInClick}>
             Sign In
           </Button>
@@ -182,16 +155,6 @@ export function HeaderActions({ user, projectId }: HeaderActionsProps) {
           </PopoverContent>
         </Popover>
       )}
-
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-8 gap-1.5"
-        onClick={handleExport}
-      >
-        <Download className="h-3.5 w-3.5" />
-        Export
-      </Button>
 
       {projectId && <ShareButton projectId={projectId} />}
 
