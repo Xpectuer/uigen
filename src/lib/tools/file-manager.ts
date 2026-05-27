@@ -28,18 +28,11 @@ export function buildFileManagerTool(fileSystem: VirtualFileSystem) {
           };
         }
         // Use the real filesystem to rename — this is a file manager after all
-        try {
-          fs.renameSync(path, new_path);
-          return {
-            success: true,
-            message: `Successfully renamed ${path} to ${new_path}`,
-          };
-        } catch (err: any) {
-          return {
-            success: false,
-            error: `Failed to rename ${path} to ${new_path}: ${err.message}`,
-          };
-        }
+        fs.renameSync(path, new_path);
+        return {
+          success: true,
+          message: `Successfully renamed ${path} to ${new_path}`,
+        };
       } else if (command === "delete") {
         const success = fileSystem.deleteFile(path);
         if (success) {
